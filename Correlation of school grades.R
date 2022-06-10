@@ -6,7 +6,8 @@ library(gridExtra)            #view chart- grid.arrange
 library(PerformanceAnalytics) #view chart- chart.Correlation
 library(reshape2)             #view chart- melt
 library(psych)                #view chart- KMO
-
+library(rqPen)                #view chart- square
+library(ggrepel)              #view chart- geom_text_repel
 
 #load data
 load("data/notasfatorial.RData")
@@ -305,3 +306,123 @@ round(x = cor(fatores_df),
 #X4   0   0   0   1
 
 #calculate factor loadings ------------------------
+#Note: join original base with 'fatores_df' object:
+notasfatorial_final <-  cbind(notasfatorial,
+                              fatores_df) %>% 
+  rename(F1 = X1,
+         F2 = X2,
+         F3 = X3,
+         F4 = X4) 
+# estudante       notas_financas ...  F1            F2              F3              F4 
+#
+# Gabriela        5.8                 -0.01547944   -1.66469388     -0.1766275      0.73844462           
+# Luiz Felipe     3.1                 1.07610529    1.50304602      0.3420554       -0.83076984         
+# Patrícia        3.1                 0.59962213    -0.60334446     -0.6332607      -0.67212429           
+# Gustavo         10                  -1.34559751   0.88666982      0.3270698       -0.22705272      
+# Letícia         3.4                 0.97852930    -0.92152099     0.1607774       0.37886785
+# ...
+
+#calculate correlations between original variables and factors
+correlacoes_entre_fatores <- cor(notasfatorial_final[,2:9])
+#                     notas         notas       ...      
+#                     financas      custos      ...   F3                F4
+#
+# notas_financas     1.000000000    0.755923392       4.368980e-01      8.615779e-02 
+# notas_custos       0.755923392    1.000000000       -1.199311e-01     -3.319396e-01
+# ...
+# F3                 0.436897977    -0.119931111      1.000000e+00      -8.530911e-16
+# F4                 0.086157787    -0.331939621      -8.530911e-16     1.000000e+00
+
+#visualize correlations between the original variables and factors 
+correlacoes_entre_fatores %>% 
+  melt() %>% 
+  filter(Var1 %in% c("F1","F2","F3","F4") &
+           Var2 %in% c("notas_financas","notas_custos",
+                       "notas_marketing","notas_atuarias")) %>% 
+  ggplot() +
+  geom_tile(aes(x = Var1, y = Var2, fill = value)) +
+  geom_text(aes(x = Var1, y = Var2, label = round(x = value, digits = 3)),
+            size = 4) +
+  labs(x = NULL,
+       y = NULL,
+       fill = "Correlações") +
+  scale_fill_gradient2(low = "dodgerblue4", 
+                       mid = "white", 
+                       high = "brown4",
+                       midpoint = 0) +
+  theme(panel.background = element_rect("white"),
+        panel.grid = element_line("grey95"),
+        panel.border = element_rect(NA),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 0))
+
+#report
+correlacoes_entre_fatores %>% 
+  melt() %>% 
+  filter(Var1 %in% c("F1","F2","F3","F4") &
+           Var2 %in% c("notas_financas","notas_custos",
+                       "notas_marketing","notas_atuarias")) %>% 
+  dcast(Var1 ~ Var2) %>% 
+  column_to_rownames("Var1") -> correlacoes_entre_fatores_df
+
+#add squares of the factor loadings of the object_correlations_between_factors_df 
+# the result must be the same as the eigenvalues
+correlacoes_entre_fatores_df %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = "striped", 
+                full_width = T, 
+                font_size = 12)
+#       notas         notas         notas           notas
+#       financas      custos        marketing       atuarias
+# F1   -0.895350050   -0.93437438    0.0422646704    -0.91791021
+# F2    0.006729105    0.04875578    0.9989402668    -0.01019835
+# F3    0.436897977   -0.11993111   -0.0001939873    -0.30408668
+# F4    0.086157787   -0.33193962    0.0182209608     0.25469224
+
+correlacoes_entre_fatores_df %>% 
+  mutate(eigenvalues = notas_financas^2 + notas_custos^2 +
+           notas_marketing^2 + notas_atuarias^2) %>% 
+  kable() %>%
+  kable_styling(bootstrap_options = "striped", 
+                full_width = T, 
+                font_size = 12)
+#       notas         notas         notas           notas
+#       financas      custos        marketing       atuarias        eigenvalues
+# F1   -0.895350050   -0.93437438    0.0422646704    -0.91791021    2.5190527
+# F2    0.006729105    0.04875578    0.9989402668    -0.01019835    1.0004081
+# F3    0.436897977   -0.11993111   -0.0001939873    -0.30408668    0.2977321
+# F4    0.086157787   -0.33193962    0.0182209608     0.25469224    0.1828072
+
+correlacoes_entre_fatores_df %>% 
+  mutate(eigenvalues = notas_financas^2 + notas_custos^2 +
+           notas_marketing^2 + notas_atuarias^2) %>% 
+  filter(eigenvalues > 1) %>% 
+  select(-eigenvalues) %>% 
+  t() %>% 
+  data.frame() %>% 
+  square() %>% 
+  mutate(comunalidades = rowSums(.))
+#                   F1            F2              comunalidades
+#
+#   notas_financas  0.801651713   4.528086e-05    0.8016970
+#   notas_custos    0.873055491   2.377126e-03    0.8754326
+#   notas_marketing 0.001786302   9.978817e-01    0.9996680
+#   notas_atuarias  0.842559151   1.040064e-04    0.8426632
+
+#generate plot
+correlacoes_entre_fatores_df %>% 
+  t() %>% 
+  data.frame() %>% 
+  rownames_to_column("variáveis") %>% 
+  ggplot(aes(x = F1, y = F2, label = variáveis)) +
+  geom_point(color = "dodgerblue4",
+             size = 2) +
+  geom_text_repel() +
+  geom_vline(aes(xintercept = 0), linetype = "dashed", color = "red") +
+  geom_hline(aes(yintercept = 0), linetype = "dashed", color = "red") +
+  expand_limits(x= c(-1.25, 0.25), y=c(-0.25, 1)) +
+  labs(x = paste("Dimension 1", paste0("(",round(var_compartilhada[1] * 100, 
+                                                digits = 2),"%)")),
+       y = paste("Dimension 2", paste0("(",round(var_compartilhada[2] * 100, 
+                                                digits = 2),"%)"))) +
+  theme_bw()
